@@ -443,33 +443,25 @@ namespace Steam_Desktop_Authenticator
 
                 foreach (var acc in accs)
                 {
-                    // Check for a valid refresh token first
-                    if (acc.Session.IsRefreshTokenExpired())
+                    Confirmation[] tmp;
+                    try
                     {
-                        MessageBox.Show("Your session for account " + acc.AccountName + " has expired. You will be prompted to login again.", "Trade Confirmations", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        tmp = await ConfirmationsFetcher.FetchAsync(acc);
+                    }
+                    catch (SessionExpiredException ex)
+                    {
+                        MessageBox.Show(ex.Message + " You will be prompted to login again.", "Trade Confirmations", MessageBoxButtons.OK, MessageBoxIcon.Error);
                         PromptRefreshLogin(acc);
                         break;
                     }
-
-                    // Check for a valid access token, refresh it if needed
-                    if (acc.Session.IsAccessTokenExpired())
+                    catch (Exception)
                     {
-                        try
-                        {
-                            lblStatus.Text = "Refreshing session...";
-                            await acc.Session.RefreshAccessToken();
-                            lblStatus.Text = "Checking confirmations...";
-                        }
-                        catch (Exception ex)
-                        {
-                            MessageBox.Show(ex.Message, "Steam Login Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                            break;
-                        }
+                        // Network errors etc., try again on the next check
+                        continue;
                     }
 
                     try
                     {
-                        Confirmation[] tmp = await acc.FetchConfirmationsAsync();
                         foreach (var conf in tmp)
                         {
                             if ((conf.ConfType == Confirmation.EMobileConfirmationType.MarketListing && manifest.AutoConfirmMarketTransactions) ||

@@ -17,37 +17,52 @@ namespace Steam_Desktop_Authenticator
             this.steamAccount = steamAccount;
             this.Text = String.Format("Trade Confirmations - {0}", steamAccount.AccountName);
         }
-        private async Task LoadData()
+
+        private void ShowError(string message)
+        {
+            Label errorLabel = new Label() { Text = "Something went wrong:\n" + message, AutoSize = true, MaximumSize = new Size(this.splitContainer1.Panel2.Width - 40, 0), ForeColor = Color.Red, Location = new Point(20, 20) };
+            this.splitContainer1.Panel2.Controls.Add(errorLabel);
+        }
+
+        private async Task LoadData(bool allowLoginPrompt = true)
         {
             this.splitContainer1.Panel2.Controls.Clear();
 
-            // Check for a valid refresh token first
-            if (steamAccount.Session.IsRefreshTokenExpired())
+            Confirmation[] confirmations;
+            try
             {
-                MessageBox.Show("Your session has expired. Use the login again button under the selected account menu.", "Trade Confirmations", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                this.Close();
-                return;
+                confirmations = await ConfirmationsFetcher.FetchAsync(steamAccount);
             }
-
-            // Check for a valid access token, refresh it if needed
-            if (steamAccount.Session.IsAccessTokenExpired())
+            catch (SessionExpiredException ex)
             {
-                try
+                if (!allowLoginPrompt)
                 {
-                    await steamAccount.Session.RefreshAccessToken();
-                }
-                catch (Exception ex)
-                {
-                    MessageBox.Show(ex.Message, "Steam Login Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    this.Close();
+                    ShowError(ex.Message + "\nUse \"Login again\" under the Selected Account menu.");
                     return;
                 }
+
+                DialogResult answer = MessageBox.Show(ex.Message + "\n\nDo you want to log in again now?", "Trade Confirmations", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+                if (answer != DialogResult.Yes)
+                {
+                    ShowError(ex.Message + "\nUse \"Login again\" under the Selected Account menu.");
+                    return;
+                }
+
+                LoginForm loginForm = new LoginForm(LoginForm.LoginType.Refresh, steamAccount);
+                loginForm.ShowDialog();
+
+                // Retry once with the new session, without prompting again
+                await this.LoadData(false);
+                return;
+            }
+            catch (Exception ex)
+            {
+                ShowError(ex.Message);
+                return;
             }
 
             try
             {
-                var confirmations = await steamAccount.FetchConfirmationsAsync();
-
                 if (confirmations == null || confirmations.Length == 0)
                 {
                     Label errorLabel = new Label() { Text = "Nothing to confirm/cancel", AutoSize = true, ForeColor = Color.Black, Location = new Point(150, 20) };
@@ -130,8 +145,7 @@ namespace Steam_Desktop_Authenticator
             }
             catch (Exception ex)
             {
-                Label errorLabel = new Label() { Text = "Something went wrong:\n" + ex.Message, AutoSize = true, ForeColor = Color.Red, Location = new Point(20, 20) };
-                this.splitContainer1.Panel2.Controls.Add(errorLabel);
+                ShowError(ex.Message);
             }
         }
 
